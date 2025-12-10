@@ -65,7 +65,20 @@ trap cancel SIGINT
 black=$(tput setaf 0); red=$(tput setaf 1); green=$(tput setaf 2); yellow=$(tput setaf 3); blue=$(tput setaf 4); magenta=$(tput setaf 5); cyan=$(tput setaf 6); white=$(tput setaf 7)
 bold=$(tput bold); normal=$(tput sgr0); underline=$(tput smul); reset_underline=$(tput rmul); jiacu=${normal}${bold}
 
-mediapath="$1" ; fenbianlv="$2"
+mediapath="$1"
+# 判断第二个参数是否为 -sdr
+if [[ "$2" == "-sdr" ]]; then
+    fenbianlv=""       # 如果是 -sdr，说明没指定分辨率，留空让后续自动计算
+    SDR_MODE=true      # 开启 SDR 模式
+else
+    fenbianlv="$2"     # 否则第二个参数就是分辨率（或 -t）
+    # 判断第三个参数是否为 -sdr (例如: jietu video.mkv 1920x1080 -sdr)
+    if [[ "$3" == "-sdr" ]]; then
+        SDR_MODE=true
+    else
+        SDR_MODE=false
+    fi
+fi
 Source=undefined
 
 [[ ! $(command -v awk) ]] && echo -e "\n${red}${bold}ERROR${jiacu} awk not found, please install it${normal}" && exit 1
@@ -242,7 +255,15 @@ for c in $(seq -w 1 $pics) ; do
     i=`expr $i + $timestampsetting` ; timestamp=`date -u -d @$i +%H:%M:%S`
     echo -n "Writing ${blue}${file_title_clean}.scr${c}.png${normal} from timestamp ${blue}${timestamp}${normal} ...  "
   # ffmpeg -y -ss $timestamp -i "$mediapath" -vframes 1 -s $fenbianlv "${outputpath}/${file_title_clean}.scr${c}.png" > /dev/null 2>&1
-    ffmpeg -y -ss $timestamp -i "$mediapath" -ss 00:00:01 -frames:v 1 -s $fenbianlv "${outputpath}/${file_title_clean}.scr${c}.png" > /dev/null 2>&1
+if [[ "$SDR_MODE" == true ]]; then
+        # SDR模式：使用 -vf 滤镜，将分辨率格式从 WxH 转换为 W:H 以适配 scale 滤镜语法
+        # 并添加 in_color_matrix=bt709
+        vf_scale=$(echo "$fenbianlv" | sed 's/x/:/')
+        ffmpeg -y -ss $timestamp -i "$mediapath" -ss 00:00:01 -frames:v 1 -vf "scale=${vf_scale}:in_color_matrix=bt709" "${outputpath}/${file_title_clean}.scr${c}.png" > /dev/null 2>&1
+    else
+        # 原模式：使用 -s 参数
+        ffmpeg -y -ss $timestamp -i "$mediapath" -ss 00:00:01 -frames:v 1 -s $fenbianlv "${outputpath}/${file_title_clean}.scr${c}.png" > /dev/null 2>&1
+    fi
     [[ -f "${outputpath}/${file_title_clean}.scr${c}.png" ]] && success_src=y || success_src=n
     [[ $success_src == y ]] && echo -e "${green}DONE${normal}" || echo -e "${green}ERROR${normal}"
 
